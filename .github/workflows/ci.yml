@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          python-version: "3.11"
+
+      - name: Install locked development dependencies
+        run: uv sync --locked --extra dev
+
+      - name: Run Ruff checks
+        run: uv run --locked --extra dev ruff check .
+
+      - name: Run tests
+        run: uv run --locked --extra dev pytest
+
+      - name: Build package
+        run: uv run --locked --extra dev python -m build
+
+      - name: Scan public tree for private paths and secrets
+        run: >-
+          if rg -n '/home/richard|/Users/|\$HOME|TUSHARE_TOKEN|fast\.xiaodefa\.cn'
+          src tests docs README.md pyproject.toml; then exit 1; else exit 0; fi

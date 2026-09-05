@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "research-data-maintenance"
+version = "0.1.0"
+description = "Safe audit and consolidation utilities for research data and experiment artifacts"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+    "build>=1.2",
+    "pytest>=8",
+    "ruff>=0.8",
+]
+
+[project.scripts]
+research-data-maintenance = "research_data_maintenance.cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "C4", "RET", "SIM", "RUF"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
