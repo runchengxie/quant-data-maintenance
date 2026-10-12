@@ -33,7 +33,7 @@ Each run writes `summary.json`, `duplicates.json`, `inventory.jsonl`, and `summa
 uv run research-data-maintenance consolidate /path/to/project-data
 ```
 
-The planner reads complete manifests at `artifacts/*/materialized/seed*/manifest.json`. It groups `.npy` paths whose manifest SHA-256 and size match in `validation`, `oos`, `monitor_validation`, and `monitor_oos`. Training partitions, symlinks, existing hard links, and escaping paths are excluded or rejected.
+The planner reads complete manifests at `artifacts/*/materialized/seed*/manifest.json`. It groups `.npy` paths whose manifest SHA-256 and size match in `validation`, `oos`, `monitor_validation`, and `monitor_oos`. Training partitions, symlinks (including ancestor directories of manifests or arrays), existing hard links, and escaping paths are excluded or rejected.
 
 Planning reads metadata and prints JSON without changing files. It does not hash candidate bytes and cannot establish content equality.
 

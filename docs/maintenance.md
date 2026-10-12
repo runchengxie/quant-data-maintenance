@@ -12,10 +12,12 @@ Reclaimable space is an estimate. External hard links are excluded from that est
 
 ## Evaluation-array consolidation
 
-The planner reads complete `artifacts/*/materialized/seed*/manifest.json` files and selects `.npy` entries in `validation`, `oos`, `monitor_validation`, and `monitor_oos`. It excludes training data, symlinks, and existing hard links and rejects paths escaping the manifest directory or data root.
+The planner reads complete `artifacts/*/materialized/seed*/manifest.json` files and selects `.npy` entries in `validation`, `oos`, `monitor_validation`, and `monitor_oos`. It excludes training data, symlinks, manifests or arrays reached through symlink directories, and existing hard links, and rejects paths escaping the manifest directory or data root. Before creating directories or replacing files, application checks candidate paths and the shared/archive path components and rejects symlinks or escaping paths.
 
 A plan groups manifest-declared hashes and sizes and captures file metadata. It does not verify actual bytes. Application checks open files and mappings, compares metadata with the plan, and hashes every candidate before creating shared files or replacing paths. It does not reread manifests, so callers must keep writers stopped from planning through application.
 
 The CLI holds a maintenance lock during apply/restore. Application creates receipts and backup hard links, creates read-only shared content, replaces original paths with relative symlinks, and verifies the replacements. Redundant backup links are removed only after verification. Receipts and shared content remain. Interruptions can leave backups and a partial receipt for recovery.
 
 Restore checks original paths and shared hashes, then reconstructs regular files with recorded permissions and timestamps. It retains shared content and archives. Both mutation commands require `--writers-stopped`, Unix filesystem/locking interfaces, and `fuser`; this is caller confirmation rather than process control.
+
+Path checks do not replace the maintenance window. Stop writers and schedulers so directories and files remain unchanged between checks and filesystem operations.

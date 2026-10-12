@@ -49,7 +49,7 @@ uv run research-data-maintenance audit /path/to/data
 - `monitor_validation`
 - `monitor_oos`
 
-训练分区、符号链接、已有硬链接和路径越出 manifest 目录的文件都会被排除。
+训练分区、符号链接（包括 manifest 或数组的祖先目录）、已有硬链接和路径越出 manifest 目录的文件都会被排除。
 
 默认命令只生成计划，不修改文件：
 
