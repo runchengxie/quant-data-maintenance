@@ -1,112 +1,62 @@
-# quant-data-maintenance 使用指南
+# Usage
 
-研究数据和实验产物维护工具，重点关注可审计、可恢复和低风险操作。
+[中文页面](zh-CN/usage.md)
 
-项目提供两项能力：
+The tool provides data audits and consolidation of duplicate evaluation arrays. Callers supply every data root explicitly. It is distributed independently; consumers do not need a runtime or development dependency. Check your manifest format and partition names before using it.
 
-- `audit`：只读扫描数据目录，生成 inode 感知的文件清单和重复文件报告。
-- `consolidate`：根据完整 manifest 和 SHA-256 校验结果，规划、执行或恢复评估数组的重复内容合并。
+## Install and validate
 
-工具不会自动删除数据。执行会改变文件路径的操作前，必须明确传入参数，并确认相关写入程序和调度任务已经停止。
+Requires Python 3.11 or newer. CI runs on Linux with Python 3.11.
 
-## 当前能力
+```bash
+uv sync --locked --extra dev
+uv run --locked --extra dev ruff check .
+uv run --locked --extra dev pytest
+uv run --locked --extra dev python -m build --outdir /path/to/generated/packages
+```
 
-### `audit`
+There is no configured type checker, coverage threshold, or local dependency vulnerability gate. CI runs Ruff, tests, package build, and a public-path scan; GitHub also configures CodeQL and Dependabot. Runtime output is English or JSON and has no locale option.
 
-对指定数据根目录进行只读扫描，主要检查：
-
-- 普通文件、符号链接、设备号、inode、大小、时间戳、硬链接数和磁盘分配空间。
-- 同一 inode 的多个路径，以及内容相同但 inode 不同的文件。
-- 小范围采样和完整 SHA-256 校验。
-- inode 未发生变化时复用 `.audit/hash-cache-v2.json` 中的哈希结果。
-- 扫描前后的清单是否一致。
-
-报告写入数据根目录下的 `.audit`。每次运行都会创建独立目录，其中包括：
-
-- `summary.json`：扫描统计、稳定性、错误和限制说明。
-- `duplicates.json`：重复内容和 inode 分组。
-- `inventory.jsonl`：扫描开始时的文件清单。
-- `summary.md`：便于阅读的摘要。
-
-报告中的 `stable: false` 表示扫描期间发生了错误或目录内容发生变化，需要人工检查。报告只提供审计结果，不代表任何文件已经获准删除。
-
-示例：
+## Audit
 
 ```bash
 uv run research-data-maintenance audit /path/to/data
 ```
 
-扫描稳定时命令返回 `0`。扫描不稳定或出现错误时返回 `2`。
+Audit records regular files, symlinks, device/inode identities, sizes, timestamps, link counts, and allocated space. It groups shared inodes separately from equal contents, uses sampling before full SHA-256, and reuses `.audit/hash-cache-v2.json` when inode metadata is unchanged. A second inventory detects changes during scanning.
 
-### `consolidate`
+Each run writes `summary.json`, `duplicates.json`, `inventory.jsonl`, and `summary.md` in its own directory under the root's `.audit`. Data files are not rewritten or deleted. `stable: false` means errors or inventory changes require review. Exit status is `0` for a stable scan and `2` otherwise. Reports do not authorize deletion or constitute a filesystem snapshot.
 
-在以下分区中查找 manifest 标记为 `complete`、内容和大小均相同的 `.npy` 文件：
-
-- `validation`
-- `oos`
-- `monitor_validation`
-- `monitor_oos`
-
-训练分区、符号链接、已有硬链接和路径越出 manifest 目录的文件都会被排除。
-
-默认命令只生成计划，不修改文件：
+## Plan consolidation
 
 ```bash
 uv run research-data-maintenance consolidate /path/to/project-data
 ```
 
-审阅计划后，在确认相关写入程序和调度任务已经停止的维护窗口内执行：
+The planner reads complete manifests at `artifacts/*/materialized/seed*/manifest.json`. It groups `.npy` paths whose manifest SHA-256 and size match in `validation`, `oos`, `monitor_validation`, and `monitor_oos`. Training partitions, symlinks (including ancestor directories of manifests or arrays), existing hard links, and escaping paths are excluded or rejected.
+
+Planning reads metadata and prints JSON without changing files. It does not hash candidate bytes and cannot establish content equality.
+
+## Apply and restore
+
+These workflows require Unix `fcntl`, `os.O_NOFOLLOW`, directory synchronization, hard links, and `fuser`. Windows mutation workflows are not supported. Stop writers and schedulers yourself; `--writers-stopped` records that confirmation and does not stop processes.
 
 ```bash
-uv run research-data-maintenance consolidate /path/to/project-data \
-  --apply --writers-stopped
+uv run research-data-maintenance consolidate /path/to/project-data --apply --writers-stopped
 ```
 
-执行过程中，工具会：
+Apply takes `.storage-maintenance.lock`, checks open files and mappings with `fuser`, compares file metadata against the plan, and checks actual size and SHA-256 against manifest values. It creates a receipt and backup hard links, creates read-only shared content under `shared/materialized/sha256`, and replaces duplicate paths with relative symlinks. It verifies replacements and removes redundant backups after success. Receipts and shared content remain.
 
-1. 检查 `fuser` 是否能确认目标文件没有被打开或映射。
-2. 再次校验 manifest、文件元数据和 SHA-256。
-3. 创建维护日志和备份硬链接。
-4. 在 `shared/materialized/sha256` 下创建只读共享文件。
-5. 用相对符号链接替换经过验证的重复文件。
-6. 校验替换结果，并保留恢复所需的回执。
-
-CLI 会在数据根目录创建 `.storage-maintenance.lock`，避免多个维护操作同时运行。工具不会替用户停止写入程序或调度任务，`--writers-stopped` 表示调用者已经完成这项确认。
-
-恢复必须使用 apply 操作生成的回执，并指定同一个数据根目录：
+Apply does not reread manifests after planning. Keep writers stopped throughout planning and application. On failure, retain receipts and any surviving backups for review and recovery.
 
 ```bash
-uv run research-data-maintenance consolidate /path/to/project-data \
-  --restore /absolute/path/to/receipt.json --writers-stopped
+uv run research-data-maintenance consolidate /path/to/project-data --restore /absolute/path/to/receipt.json --writers-stopped
 ```
 
-恢复会重新写出原文件，同时保留共享内容和维护归档，便于继续审计和追溯。
+`--apply` and `--restore` are mutually exclusive. Restore requires the same resolved root recorded in the receipt. It verifies paths and content and reconstructs regular files with recorded permissions and timestamps, using backups when present or shared content otherwise. Shared files and maintenance archives are retained.
 
-## 安装
+## Scope
 
-```bash
-uv sync --locked --extra dev
-```
+This is a general mechanism, not a project-specific checkpoint migration tool. Do not add real data, credentials, private directory conventions, or automatic project migrations. Any future integration needs an explicit consumer, pinned version, and independently verified recovery contract.
 
-项目要求 Python 3.11 或更高版本。
-
-## 开发和验证
-
-```bash
-uv run --locked --extra dev ruff check .
-uv run --locked --extra dev pytest
-uv run --locked --extra dev python -m build
-```
-
-## 使用边界
-
-项目只提供通用维护机制，不包含具体项目的 checkpoint 迁移脚本、真实研究数据或默认个人数据目录。所有路径都由调用者显式提供。
-
-本工具独立发布，不要求其他仓库将它作为运行时或开发依赖。调用方应先确认自己的 manifest、分区命名和文件类型符合当前支持范围，再显式传入数据根目录；尤其 `consolidate` 仅处理本指南列出的评估分区和 `.npy` 文件。不要把某个项目的私有目录约定或迁移脚本加入通用工具。若未来建立稳定的仓库级集成，应记录消费者、锁定版本和对应数据契约，并由消费者独立验证恢复流程。
-
-执行 `consolidate --apply` 或 `--restore` 前，应先完成写入方停机确认、维护窗口确认和恢复回执保存。
-
-## 文档
-
-- [维护模型](maintenance.md)：说明扫描、合并和恢复的工作方式。
-- [贡献和维护规则](../AGENTS.md)：说明代码边界、验证命令和文档写作约定。
+See the [maintenance model](maintenance.md) and [development rules](../AGENTS.md).

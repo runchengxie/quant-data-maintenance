@@ -39,7 +39,7 @@ uv run research-data-maintenance consolidate /path/to/project-data
 
 ## 文档写作约定
 
-- 说明文档以中文为主，使用自然、直接的表达。
+- 英文 README 和主要使用文档记录当前实现，`README.zh-CN.md` 与 `docs/zh-CN/` 同步本地化，中文使用自然、直接的表达。
 - 中文正文使用中文标点。命令、路径、配置键、Python 名称和行内代码保留原样。
 - 避免翻译腔、没有必要的英文缩写和复杂长句。
 - 避免用双引号、粗体、分号和破折号堆叠重点。

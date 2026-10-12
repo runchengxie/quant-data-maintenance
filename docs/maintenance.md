@@ -1,25 +1,23 @@
-# 维护模型
+# Maintenance model
 
-项目把观察和变更分成两个阶段。
+[中文页面](zh-CN/maintenance.md)
 
-## 审计
+Observation and mutation have separate contracts.
 
-`audit` 只读取数据并生成报告，不会删除或改写数据。
+## Audit
 
-扫描会记录设备号、inode、大小、时间戳、硬链接数和磁盘分配空间。对于可能重复的文件，工具先比较文件大小和采样内容，再进行完整哈希。inode 和元数据没有变化时，可以复用缓存中的 SHA-256。完整扫描结束后，工具会再次检查目录内容。如果前后清单不同，或扫描过程中出现错误，报告会将 `stable` 标记为 `false`。
+Audit reads data files and writes only reports and the hash cache under `.audit`. It inventories device/inode, size, timestamps, link counts, and allocated space. Duplicate candidates are sampled and then hashed. Cached SHA-256 values are reused only when inode metadata is unchanged. Errors or differences in the final inventory set `stable` to `false`.
 
-审计结果写入数据根目录的 `.audit`。结果包括初始清单、重复内容分组、统计摘要和哈希缓存。重复空间是估算值，外部硬链接会从可回收空间计算中排除，reflink 共享则不在估算范围内。审计报告不会批准删除任何文件，也不等同于文件系统快照。
+Reclaimable space is an estimate. External hard links are excluded from that estimate; reflink sharing is not modeled. Reports neither authorize deletion nor provide a filesystem snapshot.
 
-## 重复评估数组合并
+## Evaluation-array consolidation
 
-`consolidate` 会读取 `artifacts/*/materialized/seed*/manifest.json`，只处理状态为 `complete` 的 manifest，并检查 `validation`、`oos`、`monitor_validation` 和 `monitor_oos` 分区中的 `.npy` 文件。
+The planner reads complete `artifacts/*/materialized/seed*/manifest.json` files and selects `.npy` entries in `validation`, `oos`, `monitor_validation`, and `monitor_oos`. It excludes training data, symlinks, manifests or arrays reached through symlink directories, and existing hard links, and rejects paths escaping the manifest directory or data root. Before creating directories or replacing files, application checks candidate paths and the shared/archive path components and rejects symlinks or escaping paths.
 
-工具只接受 manifest 中记录的路径，并拒绝越出 manifest 所在目录的路径。符号链接、通过符号链接目录访问的 manifest 或数组、已有硬链接、训练分区和不完整 manifest 都会被排除。执行前还会检查所有候选路径以及共享、归档目录的路径组成，发现符号链接或越界路径时，在创建目录和替换文件之前停止。只有哈希值和文件大小都一致的多个普通文件才会进入合并计划。
+A plan groups manifest-declared hashes and sizes and captures file metadata. It does not verify actual bytes. Application checks open files and mappings, compares metadata with the plan, and hashes every candidate before creating shared files or replacing paths. It does not reread manifests, so callers must keep writers stopped from planning through application.
 
-默认操作只输出计划，不触碰文件。执行计划时，CLI 会创建维护锁。工具随后检查目标文件是否仍被进程打开或映射，重新验证文件元数据和 SHA-256，创建维护日志和备份硬链接，再创建只读共享文件，并用相对符号链接替换重复文件。每次替换都会立即验证，失败时保留回执和备份。
+The CLI holds a maintenance lock during apply/restore. Application creates receipts and backup hard links, creates read-only shared content, replaces original paths with relative symlinks, and verifies the replacements. Redundant backup links are removed only after verification. Receipts and shared content remain. Interruptions can leave backups and a partial receipt for recovery.
 
-执行和恢复都要求调用者传入 `--writers-stopped`。这个参数只记录调用者已经完成停机确认，工具不会停止写入程序或调度任务。
+Restore checks original paths and shared hashes, then reconstructs regular files with recorded permissions and timestamps. It retains shared content and archives. Both mutation commands require `--writers-stopped`, Unix filesystem/locking interfaces, and `fuser`; this is caller confirmation rather than process control.
 
-恢复操作需要 apply 生成的回执。恢复会验证共享文件、原文件路径和哈希值，然后按回执保存的权限和时间戳重建普通文件。共享内容和归档会保留，方便后续追溯和再次恢复。
-
-路径检查不替代维护窗口。检查与文件操作之间仍需要保证目录和文件不被其他程序改动，执行前必须停止写入程序和调度任务。
+Path checks do not replace the maintenance window. Stop writers and schedulers so directories and files remain unchanged between checks and filesystem operations.
