@@ -41,10 +41,27 @@ def digest(path):
     return h.hexdigest()
 
 
+def has_symlink_component(root, path):
+    try:
+        relative = path.relative_to(root)
+    except ValueError as exc:
+        raise RuntimeError(f"Path outside data root: {path}") from exc
+    current = root
+    for part in relative.parts:
+        current = current / part
+        if current.is_symlink():
+            return True
+    if not path.resolve().is_relative_to(root):
+        raise RuntimeError(f"Path outside data root: {path}")
+    return False
+
+
 def plan(root):
     root = Path(root).resolve()
     groups = collections.defaultdict(dict)
     for manifest in sorted(root.glob("artifacts/*/materialized/seed*/manifest.json")):
+        if has_symlink_component(root, manifest):
+            continue
         data = json.loads(manifest.read_text())
         if data.get("status") != "complete":
             continue
@@ -53,7 +70,7 @@ def plan(root):
                 continue
             for item in shard["files"]:
                 path = manifest.parent / item["path"]
-                if path.suffix != ".npy" or path.is_symlink():
+                if path.suffix != ".npy" or has_symlink_component(root, path):
                     continue
                 if not manifest.parent.resolve().is_relative_to(
                     root
@@ -104,6 +121,9 @@ def save(path, data):
 def apply(root, groups):
     root = Path(root).resolve()
     paths = [Path(p) for g in groups for p in g["paths"]]
+    for path in [*paths, root / "archive", root / "shared/materialized/sha256"]:
+        if has_symlink_component(root, path):
+            raise RuntimeError(f"Symlink in consolidation path: {path}")
     assert_idle(paths)
     # Validate the entire batch before creating shared files or changing any path.
     for group in groups:

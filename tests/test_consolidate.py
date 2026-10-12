@@ -38,6 +38,60 @@ class ConsolidationTests(unittest.TestCase):
             )
         self.module = consolidate_module
 
+    def test_symlinked_shard_directory_is_excluded(self):
+        seed = self.root / "artifacts/experiment/materialized/seed0"
+        original = seed / "shards/validation-202511"
+        relocated = seed / "validation-files"
+        original.rename(relocated)
+        original.symlink_to(relocated, target_is_directory=True)
+        self.assertEqual(self.module.plan(self.root), [])
+        self.assertFalse((relocated / "x.npy").is_symlink())
+
+    def test_symlinked_seed_directory_is_excluded(self):
+        seed = self.root / "artifacts/experiment/materialized/seed0"
+        relocated = self.root / "seed-files"
+        seed.rename(relocated)
+        seed.symlink_to(relocated, target_is_directory=True)
+        self.assertEqual(self.module.plan(self.root), [])
+
+    def test_in_root_parent_path_remains_compatible(self):
+        seed = self.root / "artifacts/experiment/materialized/seed0"
+        manifest = seed / "manifest.json"
+        data = json.loads(manifest.read_text())
+        data["shards"][1]["files"][0]["path"] = (
+            "shards/train-202511/../validation-202511/x.npy"
+        )
+        manifest.write_text(json.dumps(data))
+        self.assertEqual(len(self.module.plan(self.root)), 1)
+
+    def test_symlinked_manifest_is_excluded(self):
+        seed = self.root / "artifacts/experiment/materialized/seed0"
+        manifest = seed / "manifest.json"
+        original = seed / "source-manifest.json"
+        manifest.rename(original)
+        manifest.symlink_to(original)
+        self.assertEqual(self.module.plan(self.root), [])
+
+    def assert_redirected_directory_refused(self, name):
+        groups = self.module.plan(self.root)
+        with tempfile.TemporaryDirectory() as outside:
+            (self.root / name).symlink_to(outside, target_is_directory=True)
+            with self.assertRaises(RuntimeError):
+                self.module.apply(self.root, groups)
+            self.assertEqual(list(Path(outside).iterdir()), [])
+            if name != "archive":
+                self.assertFalse((self.root / "archive").exists())
+            for group in groups:
+                for path in group["paths"]:
+                    self.assertFalse(Path(path).is_symlink())
+                    self.assertEqual(Path(path).read_bytes(), self.payload)
+
+    def test_symlinked_shared_directory_fails_before_mutation(self):
+        self.assert_redirected_directory_refused("shared")
+
+    def test_symlinked_archive_directory_fails_before_mutation(self):
+        self.assert_redirected_directory_refused("archive")
+
     def test_eval_only_reversible_and_idempotent(self):
         groups = self.module.plan(self.root)
         self.assertEqual(len(groups), 1)
