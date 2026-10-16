@@ -64,6 +64,24 @@ class ConsolidationTests(unittest.TestCase):
         manifest.write_text(json.dumps(data))
         self.assertEqual(len(self.module.plan(self.root)), 1)
 
+    def test_parent_aliases_count_each_candidate_once(self):
+        seed = self.root / "artifacts/experiment/materialized/seed0"
+        manifest = seed / "manifest.json"
+        data = json.loads(manifest.read_text())
+        item = data["shards"][1]["files"][0]
+        data["shards"][1]["files"].append({
+            **item,
+            "path": "shards/train-202511/../validation-202511/x.npy",
+        })
+        manifest.write_text(json.dumps(data))
+        groups = self.module.plan(self.root)
+        self.assertEqual(len(groups), 1)
+        self.assertEqual(len(groups[0]["paths"]), 2)
+        receipt = self.module.apply(self.root, groups)
+        self.assertEqual(receipt["replaced_paths"], 2)
+        self.module.restore(Path(receipt["journal"]))
+        self.assertEqual(len(self.module.plan(self.root)[0]["paths"]), 2)
+
     def test_symlinked_manifest_is_excluded(self):
         seed = self.root / "artifacts/experiment/materialized/seed0"
         manifest = seed / "manifest.json"
