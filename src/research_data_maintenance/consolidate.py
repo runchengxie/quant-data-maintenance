@@ -76,6 +76,9 @@ def plan(root):
                     root
                 ) or not path.resolve().is_relative_to(manifest.parent.resolve()):
                     raise RuntimeError(f"Escaping manifest path: {path}")
+                # Canonicalize only after rejecting symlink components and escapes.
+                # Manifest aliases must not turn one inode into multiple candidates.
+                path = path.resolve()
                 s = path.lstat()
                 if not stat.S_ISREG(s.st_mode) or s.st_nlink != 1:
                     continue
