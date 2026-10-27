@@ -23,6 +23,8 @@ uv run research-data-maintenance audit /path/to/data
 
 整理操作的默认行为是生成计划。同一文件的重复清单条目和带 `..` 的路径别名只计入一次。实际改动文件前，必须确认写入程序已停止，并准备好恢复回执。请先阅读完整的[使用指南](docs/zh-CN/usage.md)和[维护模型](docs/zh-CN/maintenance.md)。
 
+缓存结构或 SHA-256 条目格式无效时，工具会忽略无效缓存，并重新读取文件计算哈希。
+
 ## 文档
 
 - [使用指南](docs/zh-CN/usage.md)：安装、命令示例、审计结果、整理与恢复
