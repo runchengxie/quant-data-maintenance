@@ -1,3 +1,4 @@
+import json
 import os
 import tempfile
 import unittest
@@ -76,6 +77,36 @@ class AuditTests(unittest.TestCase):
         result = self.audit()
         self.assertEqual(result["hashed_inodes"], 2)
         self.assertEqual(result["duplicate_inode_copies"], 0)
+
+    def test_invalid_cache_container_is_rebuilt(self):
+        (self.root / "a").write_bytes(b"same")
+        (self.root / "b").write_bytes(b"same")
+        cache_root = self.root / ".audit"
+        cache_root.mkdir()
+        for cached in (None, [], 42, "invalid"):
+            with self.subTest(cached=cached):
+                (cache_root / "hash-cache-v2.json").write_text(json.dumps(cached))
+                result = self.audit()
+                self.assertTrue(result["stable"])
+                self.assertEqual(result["hashed_inodes"], 2)
+                self.assertEqual(result["duplicate_inode_copies"], 1)
+
+    def test_invalid_cached_hash_cannot_report_false_duplicates(self):
+        content = bytearray(b"a" * 24576)
+        (self.root / "a").write_bytes(content)
+        content[6000] = ord("b")
+        (self.root / "b").write_bytes(content)
+        self.audit()
+        cache_file = self.root / ".audit/hash-cache-v2.json"
+        keys = json.loads(cache_file.read_text())
+        for invalid in (None, [], 42, "invalid", "g" * 64):
+            with self.subTest(invalid=invalid):
+                cache_file.write_text(json.dumps(dict.fromkeys(keys, invalid)))
+                result = self.audit()
+                self.assertTrue(result["stable"])
+                self.assertEqual(result["cached_hashes"], 0)
+                self.assertEqual(result["hashed_inodes"], 2)
+                self.assertEqual(result["duplicate_inode_copies"], 0)
 
     def test_change_during_scan_invalidates_report(self):
         (self.root / "a").write_bytes(b"one")

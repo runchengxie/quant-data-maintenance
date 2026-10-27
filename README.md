@@ -16,6 +16,8 @@ uv run research-data-maintenance audit /path/to/data
 
 `audit` reads data and writes reports and a hash cache under the selected root's `.audit` directory. `consolidate` defaults to printing a metadata-based plan. The plan counts each candidate path once, including manifest paths with `..` aliases. The plan does not verify candidate bytes. Stop writers and schedulers before applying or restoring; read the [usage guide](docs/usage.md) and [maintenance model](docs/maintenance.md) first.
 
+Malformed cache containers and invalid SHA-256 entries are ignored and rebuilt from file contents.
+
 Runtime output is English or JSON. There is no locale option.
 
 ## Documentation

@@ -5,6 +5,7 @@ import datetime
 import hashlib
 import json
 import os
+import re
 import stat
 import uuid
 from pathlib import Path
@@ -84,6 +85,12 @@ def audit(root, audit_root):
         cache = json.loads(cache_file.read_text())
     except (OSError, ValueError):
         cache = {}
+    # The cache is optional evidence, not an authority for malformed digests.
+    cache = {
+        key: value
+        for key, value in (cache.items() if isinstance(cache, dict) else ())
+        if isinstance(value, str) and re.fullmatch(r"[0-9a-f]{64}", value)
+    }
     new_cache, sampled, hashed, hits = {}, 0, 0, 0
     size_groups = collections.defaultdict(list)
     for entry in inodes.values():

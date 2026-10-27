@@ -8,6 +8,8 @@ Observation and mutation have separate contracts.
 
 Audit reads data files and writes only reports and the hash cache under `.audit`. It inventories device/inode, size, timestamps, link counts, and allocated space. Duplicate candidates are sampled and then hashed. Cached SHA-256 values are reused only when inode metadata is unchanged. Errors or differences in the final inventory set `stable` to `false`.
 
+The optional cache must be a JSON object with lowercase 64-character hexadecimal SHA-256 values. Invalid containers and digest entries are ignored and recomputed from file contents; valid entries keep the existing inode checks. Regression tests cover malformed containers and invalid digests for different files with matching samples.
+
 Reclaimable space is an estimate. External hard links are excluded from that estimate; reflink sharing is not modeled. Reports neither authorize deletion nor provide a filesystem snapshot.
 
 ## Evaluation-array consolidation
