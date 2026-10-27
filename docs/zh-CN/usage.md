@@ -20,7 +20,7 @@
 - 普通文件、符号链接、设备号、inode、大小、时间戳、硬链接数和磁盘分配空间。
 - 同一 inode 的多个路径，以及内容相同但 inode 不同的文件。
 - 小范围采样和完整 SHA-256 校验。
-- inode 未发生变化时复用 `.audit/hash-cache-v2.json` 中的哈希结果。
+- inode 元数据未发生变化时复用 `.audit/hash-cache-v2.json` 中的哈希结果。
 - 扫描前后的清单是否一致。
 
 报告写入数据根目录下的 `.audit`。每次运行都会创建独立目录，其中包括：
@@ -97,7 +97,7 @@ uv sync --locked --extra dev
 ```bash
 uv run --locked --extra dev ruff check .
 uv run --locked --extra dev pytest
-uv run --locked --extra dev python -m build
+uv run --locked --extra dev python -m build --outdir /path/to/generated/packages
 ```
 
 ## 使用边界
